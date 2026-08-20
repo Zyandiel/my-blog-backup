@@ -1,0 +1,234 @@
+.uil-admin-wrap {
+	max-width: 1180px;
+}
+
+.uil-admin-wrap > .description {
+	margin-bottom: 18px;
+}
+
+.uil-admin-grid {
+	display: grid;
+	grid-template-columns: minmax(260px, 0.7fr) minmax(420px, 1.3fr);
+	gap: 20px;
+	align-items: start;
+	margin-top: 20px;
+}
+
+.uil-panel {
+	box-sizing: border-box;
+	margin-top: 20px;
+	padding: 20px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	box-shadow: 0 1px 1px rgb(0 0 0 / 4%);
+}
+
+.uil-admin-grid .uil-panel {
+	margin-top: 0;
+}
+
+.uil-panel > h2:first-child,
+.uil-panel form > h2:first-child {
+	margin-top: 0;
+}
+
+.uil-label-form {
+	display: grid;
+	gap: 14px;
+}
+
+.uil-label-form label,
+.uil-full-field {
+	display: grid;
+	gap: 6px;
+}
+
+.uil-label-form label > span,
+.uil-full-field > span {
+	font-weight: 600;
+}
+
+.uil-label-form input[type="text"],
+.uil-label-form input[type="number"],
+.uil-label-form textarea,
+.uil-full-field input,
+.uil-full-field select {
+	width: 100%;
+}
+
+.uil-field-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr 0.8fr;
+	gap: 12px;
+}
+
+.uil-field-row input[type="color"] {
+	width: 100%;
+	min-height: 38px;
+	padding: 2px;
+}
+
+.uil-label-editor-list {
+	display: grid;
+	gap: 10px;
+}
+
+.uil-label-editor {
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+
+.uil-label-editor summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px;
+	cursor: pointer;
+	list-style: none;
+}
+
+.uil-label-editor summary::-webkit-details-marker {
+	display: none;
+}
+
+.uil-label-editor[open] summary {
+	border-bottom: 1px solid #dcdcde;
+}
+
+.uil-label-editor__hint {
+	color: #646970;
+	font-size: 12px;
+}
+
+.uil-label-editor__body {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 16px;
+	align-items: end;
+	padding: 16px;
+}
+
+.uil-label-editor__body .delete {
+	color: #b32d2e;
+}
+
+.uil-empty-state {
+	padding: 30px 16px;
+	color: #646970;
+	text-align: center;
+	background: #f6f7f7;
+	border: 1px dashed #c3c4c7;
+}
+
+.uil-settings-panel {
+	max-width: 820px;
+}
+
+.uil-settings-panel h2:not(:first-child) {
+	margin-top: 28px;
+	padding-top: 22px;
+	border-top: 1px solid #dcdcde;
+}
+
+.uil-check-row {
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	margin: 14px 0;
+}
+
+.uil-check-row input {
+	margin-top: 2px;
+}
+
+.uil-check-row span {
+	display: grid;
+	gap: 3px;
+}
+
+.uil-check-row small {
+	color: #646970;
+}
+
+.uil-full-field {
+	max-width: 680px;
+	margin-top: 15px;
+}
+
+.uil-help-panel {
+	max-width: 820px;
+}
+
+.uil-help-panel li {
+	margin-bottom: 12px;
+}
+
+.uil-help-panel pre {
+	padding: 14px;
+	overflow: auto;
+	background: #f0f0f1;
+	border-radius: 3px;
+}
+
+.uil-assignment-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 10px;
+	max-width: 760px;
+}
+
+.uil-assignment-item {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 5px 9px;
+	align-items: center;
+	box-sizing: border-box;
+	min-height: 54px;
+	padding: 10px;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+
+.uil-assignment-item input {
+	grid-row: 1 / span 2;
+}
+
+.uil-assignment-item small {
+	grid-column: 2;
+	color: #646970;
+}
+
+.uil-assignment-item--readonly {
+	background: #f6f7f7;
+}
+
+.uil-admin-user-id {
+	display: block;
+	margin-bottom: 5px;
+	font-variant-numeric: tabular-nums;
+}
+
+.uil-admin-user-labels {
+	display: block;
+}
+
+.uil-admin-user-labels--empty {
+	color: #8c8f94;
+}
+
+@media (max-width: 900px) {
+	.uil-admin-grid,
+	.uil-label-editor__body {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 600px) {
+	.uil-field-row {
+		grid-template-columns: 1fr;
+	}
+}
+

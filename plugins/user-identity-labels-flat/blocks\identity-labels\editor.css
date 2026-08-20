@@ -1,0 +1,24 @@
+.uil-block-placeholder {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 10px;
+	align-items: center;
+	box-sizing: border-box;
+	padding: 16px;
+	color: #1e1e1e;
+	background: #f0f0f1;
+	border: 1px dashed #8c8f94;
+	border-radius: 4px;
+}
+
+.uil-block-placeholder .dashicons {
+	grid-row: 1 / span 2;
+	width: 28px;
+	height: 28px;
+	font-size: 28px;
+}
+
+.uil-block-placeholder small {
+	color: #646970;
+}
+

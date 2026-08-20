@@ -1,0 +1,34 @@
+{
+	"apiVersion": 2,
+	"name": "uil/identity-labels",
+	"version": "1.0.0",
+	"title": "用户身份标签",
+	"category": "widgets",
+	"icon": "id-alt",
+	"description": "显示当前文章作者或指定用户的身份标签。",
+	"textdomain": "user-identity-labels",
+	"attributes": {
+		"userId": {
+			"type": "number",
+			"default": 0
+		},
+		"showId": {
+			"type": "boolean",
+			"default": false
+		},
+		"emptyText": {
+			"type": "string",
+			"default": ""
+		}
+	},
+	"usesContext": [ "postId", "postType" ],
+	"supports": {
+		"html": false,
+		"spacing": {
+			"margin": true
+		}
+	},
+	"editorScript": "file:./editor.js",
+	"editorStyle": "file:./editor.css"
+}
+

@@ -1,0 +1,640 @@
+<?php
+// Exit if accessed directly
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+/* Set up upload field for frontend */
+/* overwrite the two functions for when an upload is made from the frontend so they don't check for a logged in user */
+if( strpos( wp_get_referer(), 'wp-admin' ) === false && isset( $_REQUEST['action'] ) && 'upload-attachment' == $_REQUEST['action'] ){
+
+    if( isset( $_REQUEST['wppb_upload'] ) && 'true' == $_REQUEST['wppb_upload'] &&
+        isset( $_REQUEST['meta_name'] ) && wppb_check_that_field_is_defined( sanitize_text_field( $_REQUEST['meta_name'] ), array( 'Avatar', 'Upload' ) ) ){
+
+        if( !function_exists( 'check_ajax_referer' ) ){
+            function check_ajax_referer( ) {
+                return true;
+            }
+        }
+
+        if( !function_exists( 'auth_redirect' ) ){
+            function auth_redirect() {
+                return true;
+            }
+        }
+
+    }
+
+}
+
+/* create a fake user with the "upload_posts" capability and assign him to the global $current_user. this is used to bypass the checks for current_user_can('upload_files') in async-upload.php */
+add_action( 'current_screen', 'wppb_create_fake_user_when_uploading_and_not_logged_in' );
+if( !function_exists( 'wppb_create_fake_user_when_uploading_and_not_logged_in' ) ) {
+    function wppb_create_fake_user_when_uploading_and_not_logged_in() {
+        // don't do anything if this request is coming from the back-end
+        if( !( strpos( wp_get_referer(), 'wp-admin' ) === false ) )
+            return;
+
+        if ( isset($_REQUEST['action']) && 'upload-attachment' == $_REQUEST['action'] &&
+             isset($_REQUEST['wppb_upload']) && 'true' == $_REQUEST['wppb_upload'] &&
+             isset( $_REQUEST['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( $_REQUEST['_wpnonce'] ), 'media-form' ) &&
+             isset( $_REQUEST['meta_name'] ) && wppb_check_that_field_is_defined( sanitize_text_field( $_REQUEST['meta_name'] ), array( 'Avatar', 'Upload' ) ) ) {
+
+            if ( !is_user_logged_in() || !current_user_can( 'upload_files' ) || !current_user_can( 'edit_posts' ) ) {
+                global $current_user;
+                $current_user = new WP_User( 0, 'frontend_uploader' );
+                $current_user->allcaps = array( "upload_files" => true, "edit_posts" => true, "edit_others_posts" => true, "edit_pages" => true, "edit_others_pages" => true );
+            }
+        }
+    }
+}
+
+/* for a request of a upload from the frontend and no user is logged in don't query for attachments */
+add_action( 'after_setup_theme', 'wppb_modify_query_attachements_when_not_logged_in' );
+if( !function_exists( 'wppb_modify_query_attachements_when_not_logged_in' ) ) {
+    function wppb_modify_query_attachements_when_not_logged_in()
+    {
+        if ( strpos(wp_get_referer(), 'wp-admin') === false && !is_user_logged_in() ) {
+            add_action('wp_ajax_query-attachments', 'wppb_wp_ajax_not_loggedin_query_attachments', 0);
+            add_action('wp_ajax_nopriv_query-attachments', 'wppb_wp_ajax_not_loggedin_query_attachments', 0);
+            function wppb_wp_ajax_not_loggedin_query_attachments()
+            {
+                wp_send_json_success();
+            }
+        }
+    }
+}
+
+/* restrict file types of the upload field functionality */
+add_filter('wp_handle_upload_prefilter', 'wppb_upload_file_type');
+if( !function_exists( 'wppb_upload_file_type' ) ) {
+    function wppb_upload_file_type($file)
+    {
+        if( isset( $_POST['wppb_upload'] ) && $_POST['wppb_upload'] == 'true' && isset( $_POST['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( $_POST['_wpnonce'] ), 'media-form' ) ) {
+
+            // file size limits.
+            $size = $file['size'];
+            $limit = apply_filters('wppb_server_max_upload_size_byte_constant', wppb_return_bytes(ini_get('upload_max_filesize')));
+            if ( $size > $limit )  {
+                $limit = $limit / ( 1024 * 1024 ) ;
+                $file['error'] = __("Files must be smaller than ", "profile-builder") . $limit . 'MB';
+            }
+
+            if (isset($_POST['meta_name']) && !empty($_POST['meta_name'])) {
+                $meta_name = sanitize_text_field( $_POST['meta_name'] );
+                /*let's get the field details so we can see if we have any file restrictions */
+                $all_fields = apply_filters( 'wppb_form_fields', get_option('wppb_manage_fields'), array( 'context' => 'upload_helper', 'upload_meta_name' => $meta_name ) );
+                if (!empty($all_fields)) {
+                    foreach ($all_fields as $field) {
+                        if ($field['meta-name'] == $meta_name) {
+
+                            // per-field file size limit
+                            if ( !empty( $field['max-file-size'] ) && is_numeric( $field['max-file-size'] ) && floatval( $field['max-file-size'] ) > 0 ) {
+                                $field_limit = floatval( $field['max-file-size'] ) * 1024 * 1024;
+                                $effective_limit = min( $field_limit, $limit );
+                                if ( $size > $effective_limit ) {
+                                    $file['error'] = __( "Files must be smaller than ", "profile-builder" ) . floatval( $field['max-file-size'] ) . 'MB';
+                                    return $file;
+                                }
+                            }
+
+                            $allowed_upload_extensions = '';
+
+                            if ($field['field'] == 'Upload' && !empty($field['allowed-upload-extensions']))
+                                $allowed_upload_extensions = $field['allowed-upload-extensions'];
+                            if ($field['field'] == 'Avatar' && !empty($field['allowed-image-extensions'])) {
+                                if (trim($field['allowed-image-extensions']) == '.*')
+                                    $allowed_upload_extensions = '.jpg,.jpeg,.gif,.png,.ico';
+                                else
+                                    $allowed_upload_extensions = $field['allowed-image-extensions'];
+                            }
+
+                            $ext = strtolower( substr(strrchr($file['name'], '.'), 1) );
+
+                            if (!empty($allowed_upload_extensions) && $allowed_upload_extensions != '.*') {
+                                $allowed = str_replace('.', '', array_map('trim', explode(",", strtolower( $allowed_upload_extensions))));
+                                //first check if the user uploaded the right type
+                                if (!in_array($ext, (array)$allowed)) {
+                                    $file['error'] = __("Sorry, you cannot upload this file type for this field.", 'profile-builder');
+                                    return $file;
+                                }
+                            }
+
+                            //check if the type is allowed at all by WordPress
+                            foreach (get_allowed_mime_types() as $key => $value) {
+                                if (strpos($key, $ext) !== false || $key == $ext)
+                                    return $file;
+                            }
+
+                            $file['error'] = __("Sorry, you cannot upload this file type for this field.", 'profile-builder');
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (empty($_POST['meta_name']))
+                $file['error'] = __("An error occurred, please try again later.", 'profile-builder');
+        }
+
+        return $file;
+    }
+}
+
+/**
+ * Function that performs validation for the simple upload field
+ *
+ * @param $field - simple upload field
+ * @param $upload - data to be uploaded
+ *
+ * @return bool
+ */
+function wppb_valid_simple_upload( $field, $upload ){
+    $limit = apply_filters( 'wppb_server_max_upload_size_byte_constant', wppb_return_bytes( ini_get( 'upload_max_filesize' ) ) );
+    $allowed_mime_types = get_allowed_mime_types();
+    $all_fields = apply_filters( 'wppb_form_fields', get_option( 'wppb_manage_fields' ), array( 'context' => 'upload_helper', 'upload_meta_name' => $field[ 'meta-name' ] ) );
+    if ( !empty( $all_fields ) ) {
+        foreach ( $all_fields as $form_field ) {
+            if ($form_field[ 'meta-name' ] == $field[ 'meta-name' ] ) {
+                // apply per-field size limit if set
+                if ( !empty( $form_field['max-file-size'] ) && is_numeric( $form_field['max-file-size'] ) && floatval( $form_field['max-file-size'] ) > 0 ) {
+                    $field_limit = floatval( $form_field['max-file-size'] ) * 1024 * 1024;
+                    $limit = min( $field_limit, $limit );
+                }
+                $allowed_upload_extensions = '';
+                if ( $form_field[ 'field' ] == 'Upload' && !empty( $form_field[ 'allowed-upload-extensions' ] ) ) {
+                    $allowed_upload_extensions = $form_field[ 'allowed-upload-extensions' ];
+                }
+                if ( $form_field[ 'field' ] == 'Avatar' ) {
+                    if ( trim( $field[ 'allowed-image-extensions' ] ) == '.*' || trim( $field[ 'allowed-image-extensions' ] ) == '' ) {
+                        $allowed_upload_extensions = '.jpg,.jpeg,.gif,.png';
+                    }
+                    else {
+                        $allowed_upload_extensions = $form_field[ 'allowed-image-extensions' ];
+                    }
+                }
+                if ( !empty( $allowed_upload_extensions ) && $allowed_upload_extensions != '.*' ) {
+                    $allowed_upload_extensions = str_replace( '.', '', array_map( 'trim', explode( ",", strtolower( $allowed_upload_extensions ) ) ) );
+                } else {
+                    $allowed = true;
+                }
+                $allowed_by_wordpress = false;
+                foreach ( $allowed_mime_types as $key => $val ){
+                    if ( $val == $upload[ 'type' ] ){
+                        $possible_extensions = explode( '|', $key );
+                        $allowed_by_wordpress = true;
+                    }
+                }
+                if ( isset( $possible_extensions ) && $allowed_by_wordpress == true ){
+                    if ( !isset( $allowed ) ){
+                        $allowed = false;
+                        foreach ( $allowed_upload_extensions as $extension ){
+                            if ( in_array( $extension, $possible_extensions ) ){
+                                $allowed = true;
+                            }
+                        }
+                    }
+                    if ( $upload[ 'size' ] > $limit ){
+                        $allowed = false;
+                    }
+                    return $allowed;
+                }
+                else{
+                    return false;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Function that registers intermediate avatar sizes
+ *
+ * @param $field - avatar field
+ *
+ */
+function wppb_add_avatar_sizes( $field ){
+    if( !empty( $field['avatar-size'] ) )
+        add_image_size( 'wppb-avatar-size-'.$field['avatar-size'], $field['avatar-size'], $field['avatar-size'], true );
+    else
+        add_image_size( 'wppb-avatar-size-100', 100, 100, true );
+
+    add_image_size( 'wppb-avatar-size-64', 64, 64, true );
+    add_image_size( 'wppb-avatar-size-26', 26, 26, true );
+}
+
+//Function that registers avatar sizes for userlisting
+function wppb_userlisting_avatar(){
+    $userlisting_posts = get_posts( array( 'posts_per_page' => -1, 'post_status' =>'publish', 'post_type' => 'wppb-ul-cpt', 'orderby' => 'post_date', 'order' => 'ASC' ) );
+    if( !empty( $userlisting_posts ) ){
+        foreach ( $userlisting_posts as $post ){
+            $this_form_settings = get_post_meta( $post->ID, 'wppb_ul_page_settings', true );
+            $all_userlisting_avatar_size = apply_filters( 'all_userlisting_avatar_size', ( isset( $this_form_settings[0]['avatar-size-all-userlisting'] ) ? (int)$this_form_settings[0]['avatar-size-all-userlisting'] : 100 ) );
+            $single_userlisting_avatar_size = apply_filters( 'single_userlisting_avatar_size', ( isset( $this_form_settings[0]['avatar-size-single-userlisting'] ) ? (int)$this_form_settings[0]['avatar-size-single-userlisting'] : 100 ) );
+
+            add_image_size( 'wppb-avatar-size-'.$all_userlisting_avatar_size, $all_userlisting_avatar_size, $all_userlisting_avatar_size, true );
+            add_image_size( 'wppb-avatar-size-'.$single_userlisting_avatar_size, $single_userlisting_avatar_size, $single_userlisting_avatar_size, true );
+        }
+    }
+}
+
+/**
+ * Function that checks if the simple upload field belongs to a repeater field with conditional logic enabled
+ *
+ * @param $field - simple upload field
+ *
+ * @return bool
+ */
+function wppb_belongs_to_repeater_with_conditional_logic( $field ){
+    $all_fields = apply_filters( 'wppb_form_fields', get_option( 'wppb_manage_fields' ), array( 'context' => 'upload_helper', 'upload_meta_name' => $field[ 'meta-name' ] ) );
+    if ( !empty( $all_fields ) ) {
+        foreach ( $all_fields as $form_field ) {
+            if ( $form_field[ 'field' ] == 'Repeater' && isset( $form_field[ 'conditional-logic-enabled' ] ) && $form_field[ 'conditional-logic-enabled' ] == 'yes' ) {
+                $repeater_group = get_option( $form_field[ 'meta-name' ], 'not_set' );
+                if ( $repeater_group == 'not_set' ) {
+                    continue;
+                }
+                else{
+                    $repeater_count = count( $repeater_group );
+                    for ( $i = 0; $i < $repeater_count; $i++ ){
+                        if ( $repeater_group[ $i ][ 'field' ] == 'Upload' && isset( $repeater_group[ $i ][ 'simple-upload' ] ) && $repeater_group[ $i ][ 'simple-upload' ] == 'yes' && isset( $_REQUEST[ $form_field[ 'meta-name' ] . '_extra_groups_count' ] ) ){
+                            $groups = absint( $_REQUEST[ $form_field[ 'meta-name' ] . '_extra_groups_count' ] );
+                            for ( $j = 0; $j <= $groups; $j++ ){
+                                $name = $repeater_group[ $i ][ 'meta-name' ];
+                                if ( $j != 0 ){
+                                    $name .= '_' . $j;
+                                }
+                                if ( $field[ 'meta-name' ] == $name ){
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function wppb_default_fields_make_upload_button( $field, $input_value, $extra_attr = '' ){
+    // change the upload limit displayed in the upload window (per-field aware)
+    $per_field_max = $field;
+    add_filter('upload_size_limit', function($wp_limit) use ($per_field_max) {
+        $server_limit = apply_filters('wppb_server_max_upload_size_byte_constant', wppb_return_bytes(ini_get('upload_max_filesize')));
+        if ( !empty( $per_field_max['max-file-size'] ) && is_numeric( $per_field_max['max-file-size'] ) && floatval( $per_field_max['max-file-size'] ) > 0 ) {
+            $field_limit = floatval( $per_field_max['max-file-size'] ) * 1024 * 1024;
+            return min( $field_limit, $server_limit );
+        }
+        return $server_limit;
+    }, 10, 1);
+
+    $upload_button = '';
+    $upload_input_id = str_replace( '-', '_', Wordpress_Creation_Kit_PB::wck_generate_slug( $field['meta-name'] ) );
+
+    /* container for the image preview (or file ico) and name and file type */
+    if( !empty( $input_value ) ){
+        /* it can hold multiple attachments separated by comma */
+        $values = explode( ',', $input_value );
+        foreach( $values as $value ) {
+            if( !empty( $value ) && is_numeric( $value ) ){
+                $thumbnail = wp_get_attachment_image($value, array(80, 80), true);
+                $file_name = get_the_title($value);
+                $file_type = get_post_mime_type($value);
+                $attachment_url = wp_get_attachment_url($value);
+                $upload_button .= '<div id="' . esc_attr($upload_input_id) . '_info_container" class="upload-field-details" data-attachment_id="' . $value . '">';
+                $upload_button .= '<div class="file-thumb">';
+                $upload_button .= "<a href='{$attachment_url}' target='_blank' class='wppb-attachment-link'>" . $thumbnail . "</a>";
+                $upload_button .= '</div>';
+                $upload_button .= '<p><span class="file-name">';
+                $upload_button .= $file_name;
+                $upload_button .= '</span><span class="file-type">';
+                $upload_button .= $file_type;
+                $upload_button .= '</span>';
+                $upload_button .= '<span class="wppb-remove-upload" tabindex="0">' . apply_filters( 'wppb_upload_button_remove_label', __( 'Remove', 'profile-builder' ) ) . '</span>';
+                $upload_button .= '</p></div>';
+            }
+        }
+        $hide_upload_button = ' style="display:none;"';
+    }
+    else{
+        $hide_upload_button = '';
+    }
+
+    if ( isset( $field[ 'simple-upload' ] ) && $field[ 'simple-upload' ] == 'yes' ){
+        //If selected accordingly in form fields, generate a simple upload button
+        $upload_button .= '<input type="file" id="upload_' . esc_attr(Wordpress_Creation_Kit_PB::wck_generate_slug($field['meta-name'], $field)) . '_button" class="wppb_simple_upload" data-field_type="'. esc_attr( $field['field'] ) .'" name="simple_upload_'. esc_attr( Wordpress_Creation_Kit_PB::wck_generate_slug( $field['meta-name'], $field ) ) .'"';
+        $upload_button .=  $hide_upload_button . '>';
+        $upload_button .= '<p id="p_simple_upload_'. esc_attr(Wordpress_Creation_Kit_PB::wck_generate_slug($field['meta-name'], $field)) .'"></p>';
+        $limit = apply_filters( 'wppb_server_max_upload_size_byte_constant', wppb_return_bytes( ini_get( 'upload_max_filesize' ) ) );
+        $all_fields = apply_filters( 'wppb_form_fields', get_option( 'wppb_manage_fields' ), array( 'context' => 'upload_helper', 'upload_meta_name' => $field[ 'meta-name' ] ) );
+        if ( !empty( $all_fields ) ) {
+            foreach ( $all_fields as $form_field ) {
+                if ($form_field[ 'meta-name' ] == $field[ 'meta-name' ] ) {
+                    // apply per-field size limit if set
+                    if ( !empty( $form_field['max-file-size'] ) && is_numeric( $form_field['max-file-size'] ) && floatval( $form_field['max-file-size'] ) > 0 ) {
+                        $field_limit = floatval( $form_field['max-file-size'] ) * 1024 * 1024;
+                        $limit = min( $field_limit, $limit );
+                    }
+                    $allowed_upload_extensions = '';
+                    if ( $form_field[ 'field' ] == 'Upload' && !empty( $form_field[ 'allowed-upload-extensions' ] ) ) {
+                        $allowed_upload_extensions = $form_field[ 'allowed-upload-extensions' ];
+                    }
+                    if ( $form_field[ 'field' ] == 'Avatar' ) {
+                        if ( trim( $field[ 'allowed-image-extensions' ] ) == '.*' || trim( $field[ 'allowed-image-extensions' ] ) == '' ) {
+                            $allowed_upload_extensions = '.jpg,.jpeg,.gif,.png';
+                        }
+                        else {
+                            $allowed_upload_extensions = $form_field[ 'allowed-image-extensions' ];
+                        }
+                    }
+                }
+                if ( !empty( $allowed_upload_extensions ) && $allowed_upload_extensions != '.*' ) {
+                    $allowed_extensions = str_replace( '.', '', array_map( 'trim', explode( ",", strtolower( $allowed_upload_extensions ) ) ) );
+                    $allowed_extensions = implode( ',', $allowed_extensions );
+                } else {
+                    $allowed_extensions = '';
+                }
+            }
+        }
+        $upload_button .= '<input id="allowed_extensions_simple_upload_'. esc_attr( $upload_input_id ) .'" type="hidden" size="36" name="allowed_extensions_simple_upload_'. esc_attr( Wordpress_Creation_Kit_PB::wck_generate_slug( $field['meta-name'], $field ) ) .'" value="'. esc_attr( $allowed_extensions ) .'"/>';
+        $upload_button .= '<input id="size_limit_simple_upload_'. esc_attr( $upload_input_id ) .'" type="hidden" name="size_limit_simple_upload_'. esc_attr( Wordpress_Creation_Kit_PB::wck_generate_slug( $field['meta-name'], $field ) ) .'" value="'. esc_attr( $limit ) .'"/>';
+        $allowed_mime_types = get_allowed_mime_types();
+        $allowed_types = '';
+        if ( !empty( $allowed_mime_types ) ) {
+            foreach ($allowed_mime_types as $key => $val){
+                $allowed_types .= $key . '=>' . $val . ',';
+            }
+        }
+        $error_messages = array(
+            'limit_error_message'       => __( 'Files must be smaller than ', 'profile-builder' ),
+            'upload_type_error_message' => __( 'Sorry, you cannot upload this file type for this field.', 'profile-builder' ),
+        );
+        $size_limit = array(
+            'size_limit' => $limit
+        );
+        $allowed_wordpress_formats = array(
+          'allowed_wordpress_formats'   => $allowed_mime_types
+        );
+        wp_localize_script( 'wppb-upload-script', 'wppb_error_messages', $error_messages );
+        wp_localize_script( 'wppb-upload-script', 'wppb_limit', $size_limit );
+        wp_localize_script( 'wppb-upload-script', 'wppb_allowed_wordpress_formats', $allowed_wordpress_formats );
+    }
+    else{
+        //Otherwise, generate the WordPress upload button
+        $upload_button .= '<a href="#" class="button wppb_upload_button" id="upload_' . esc_attr(Wordpress_Creation_Kit_PB::wck_generate_slug($field['meta-name'], $field)) . '_button" '.$hide_upload_button.' data-uploader_title="' . $field["field-title"] . '" data-uploader_button_text="'. __( 'Select File', 'profile-builder' ) .'" data-upload_mn="'. $field['meta-name'] .'" data-upload_input="' . esc_attr($upload_input_id) . '"';
+
+        if (is_user_logged_in())
+            $upload_button .= ' data-uploader_logged_in="true"';
+        $upload_button .= ' data-multiple_upload="false"';
+
+        $upload_button .= '>' . apply_filters( 'wppb_upload_button_select_label', __( 'Upload ', 'profile-builder' ) ) . '</a>';
+    }
+
+    $upload_button .= '<input id="'. esc_attr( $upload_input_id ) .'" type="hidden" size="36" name="'. esc_attr( Wordpress_Creation_Kit_PB::wck_generate_slug( $field['meta-name'], $field ) ) .'" value="'. esc_attr( wp_unslash( $input_value ) ) .'"/>';
+    return $upload_button;
+}
+
+/**
+ * Function to save an attachment from the simple upload field
+ * @param $field_name
+ * @return string|WP_Error
+ */
+function wppb_default_fields_save_simple_upload_file( $field_name ) {
+    require_once(ABSPATH . 'wp-admin/includes/file.php');
+    $upload_overrides = array('test_form' => false);
+
+    if( isset( $_FILES[$field_name] ) )
+        $file = wp_handle_upload($_FILES[$field_name], $upload_overrides);
+
+    if (isset($file['error'])) {
+        return new WP_Error('upload_error', $file['error']);
+    }
+    $filename = isset( $_FILES[$field_name]['name'] ) ? sanitize_text_field( $_FILES[$field_name]['name'] ) : '';
+    $wp_filetype = wp_check_filetype($filename, null);
+    $attachment = array(
+        'post_mime_type' => $wp_filetype['type'],
+        'post_title' => $filename,
+        'post_content' => '',
+        'post_status' => 'inherit'
+    );
+    $attachment_id = wp_insert_attachment($attachment, $file['file']);
+    if (!is_wp_error($attachment_id) && is_numeric($attachment_id)) {
+        require_once(ABSPATH . 'wp-admin/includes/image.php');
+        $attachment_data = wp_generate_attachment_metadata($attachment_id, $file['file']);
+        wp_update_attachment_metadata($attachment_id, $attachment_data);
+        return trim($attachment_id);
+    } else {
+        return '';
+    }
+}
+
+// Deferred to plugins_loaded so older Profile Builder Pro versions (which declare
+// wppb_verify_attachment_id unconditionally during their own file load) win the
+// declaration race and our function_exists guard then skips — avoiding a fatal.
+add_action( 'plugins_loaded', 'wppb_register_attachment_ownership_helpers', 20 );
+function wppb_register_attachment_ownership_helpers() {
+
+    /**
+     * Verifies if an attachment either doesn't exist or already belongs to the user.
+     * Used for IDOR protection on both Upload and Avatar fields.
+     *
+     * @param string|int $attachment_id The attachment post ID to verify.
+     * @param int|null   $user_id      The user ID to check ownership against.
+     *
+     * @return bool True if the attachment is valid for this user, false otherwise.
+     */
+    if ( !function_exists( 'wppb_verify_attachment_id' ) ) {
+        function wppb_verify_attachment_id( $attachment_id, $user_id = null ) {
+            if ( $attachment_id !== '' && is_numeric( $attachment_id ) ) {
+                $attachment = get_post( absint( trim( $attachment_id ) ) );
+                if ( $attachment && $attachment->post_type === 'attachment' ) {
+
+                    // Get current user info for admin bypass checks
+                    $current_user_id = get_current_user_id();
+                    $current_user = $current_user_id ? get_userdata( $current_user_id ) : null;
+                    $is_admin = $current_user && current_user_can( 'manage_options' );
+
+                    if ( $user_id ) {
+                        // Allow admins to upload files for users
+                        if ( $is_admin ) {
+                            return true;
+                        }
+                        // The attachment is claimable when it already belongs to the target
+                        // user, or to the user performing the request. An author-less
+                        // attachment (post_author == 0) is only claimable by an
+                        // unauthenticated request (e.g. a visitor registering, whose upload
+                        // has no author yet). This prevents an authenticated user from
+                        // claiming (IDOR) an author-0 attachment created by someone else's
+                        // anonymous/nopriv upload.
+                        if ( $attachment->post_author == $user_id
+                            || ( $current_user_id && $attachment->post_author == $current_user_id )
+                            || ( 0 === (int) $current_user_id && 0 === (int) $attachment->post_author ) ) {
+                            return true;
+                        }
+                    } else {
+                        // If no user ID is provided, check if current user is admin
+                        if ( $is_admin ) {
+                            return true;
+                        }
+                        // Without an explicit target user, an authenticated user may only
+                        // reference an attachment they already own; an author-less
+                        // attachment is only claimable by an unauthenticated request.
+                        if ( ( $current_user_id && $attachment->post_author == $current_user_id )
+                            || ( 0 === (int) $current_user_id && 0 === (int) $attachment->post_author ) ) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Validates attachment ownership and updates the user meta and post author.
+     * Used for IDOR-safe saving on both Upload and Avatar fields.
+     *
+     * @param string|int $attachment_id The attachment post ID.
+     * @param array      $field         The field definition array (must contain 'meta-name').
+     * @param int        $user_id       The user ID to save for.
+     */
+    if ( !function_exists( 'wppb_save_attachment_id' ) ) {
+        function wppb_save_attachment_id( $attachment_id, $field, $user_id ) {
+            // Verify that the attachment either doesn't exist or already belongs to the user
+            if ( wppb_verify_attachment_id( $attachment_id, $user_id ) ) {
+                update_user_meta( $user_id, $field['meta-name'], absint( $attachment_id ) );
+                wp_update_post( array(
+                    'ID'          => absint( trim( $attachment_id ) ),
+                    'post_author' => $user_id
+                ) );
+            } else {
+                update_user_meta( $user_id, $field['meta-name'], '' );
+            }
+        }
+    }
+}
+
+/**
+ * Resolves a simple-upload AJAX `name` parameter to a configured form field.
+ *
+ * @param string       $post_name  Sanitized value of $_POST['name'] from the AJAX request.
+ * @param string|array $field_type Expected field type(s), e.g. 'Avatar' or 'Upload'.
+ *
+ * @return array|false Field definition array, or false when not found or not simple-upload.
+ */
+function wppb_resolve_simple_upload_ajax_field( $post_name, $field_type ) {
+    if ( empty( $post_name ) ) {
+        return false;
+    }
+
+    $field_types = is_array( $field_type ) ? $field_type : array( $field_type );
+    $all_fields  = apply_filters( 'wppb_form_fields', get_option( 'wppb_manage_fields' ), array( 'context' => 'simple_upload_ajax', 'upload_post_name' => $post_name ) );
+
+    if ( empty( $all_fields ) ) {
+        return false;
+    }
+
+    foreach ( $all_fields as $field ) {
+        if ( ! in_array( $field['field'], $field_types, true ) ) {
+            continue;
+        }
+        if ( ! isset( $field['simple-upload'] ) || $field['simple-upload'] !== 'yes' ) {
+            continue;
+        }
+        if ( isset( $field['woocommerce-checkout-field'] ) && $field['woocommerce-checkout-field'] === 'Yes' ) {
+            continue;
+        }
+
+        $field_slug = str_replace( '-', '_', Wordpress_Creation_Kit_PB::wck_generate_slug( $field['meta-name'], $field ) );
+        if ( $field_slug === $post_name ) {
+            return $field;
+        }
+    }
+
+    // The field was not found among the top-level form fields. Repeater fields store
+    // their inner Upload fields in a separate option keyed by the repeater's
+    // meta-name, so those fields are never part of the wppb_manage_fields list scanned
+    // above. Scan the repeater groups as well, otherwise Simple Upload inside a
+    // Repeater field is silently rejected (the lookup fails and the file input clears).
+    return wppb_resolve_simple_upload_ajax_field_in_repeater( $post_name, $field_types, $all_fields );
+}
+
+/**
+ * Resolves a simple-upload AJAX `name` parameter to an Upload field nested inside a
+ * Repeater field.
+ *
+ * Repeater sub-fields are stored unindexed in an option keyed by the repeater's
+ * meta-name. On the front-end each group posts either "<slug>" (the first group) or
+ * "<slug>_N" (the Nth extra group), where <slug> is the dash-normalized wck slug of
+ * the inner field's meta-name.
+ *
+ * @param string $post_name   Sanitized value of $_POST['name'] from the AJAX request.
+ * @param array  $field_types Expected field type(s), e.g. array( 'Upload' ).
+ * @param array  $all_fields  The already-resolved top-level form fields.
+ *
+ * @return array|false Inner field definition array, or false when not found.
+ */
+function wppb_resolve_simple_upload_ajax_field_in_repeater( $post_name, $field_types, $all_fields ) {
+    foreach ( $all_fields as $form_field ) {
+        if ( empty( $form_field['field'] ) || $form_field['field'] !== 'Repeater' ) {
+            continue;
+        }
+
+        $repeater_group = get_option( $form_field['meta-name'], 'not_set' );
+        if ( $repeater_group === 'not_set' || ! is_array( $repeater_group ) ) {
+            continue;
+        }
+
+        foreach ( $repeater_group as $inner_field ) {
+            if ( empty( $inner_field['field'] ) || ! in_array( $inner_field['field'], $field_types, true ) ) {
+                continue;
+            }
+            if ( ! isset( $inner_field['simple-upload'] ) || $inner_field['simple-upload'] !== 'yes' ) {
+                continue;
+            }
+            if ( isset( $inner_field['woocommerce-checkout-field'] ) && $inner_field['woocommerce-checkout-field'] === 'Yes' ) {
+                continue;
+            }
+
+            $base_slug = str_replace( '-', '_', Wordpress_Creation_Kit_PB::wck_generate_slug( $inner_field['meta-name'], $inner_field ) );
+            if ( $base_slug === $post_name || preg_match( '/^' . preg_quote( $base_slug, '/' ) . '_[0-9]+$/', $post_name ) ) {
+                return $inner_field;
+            }
+        }
+    }
+
+    return false;
+}
+
+function wppb_check_that_field_is_defined( $meta_name, $field_types = array() ){
+
+    if( empty( $meta_name ) )
+        return false;
+
+    $defined_fields = apply_filters( 'wppb_form_fields', get_option( 'wppb_manage_fields' ), array( 'context' => 'upload_helper', 'upload_meta_name' => $meta_name ) );
+
+    if( empty( $defined_fields ) )
+        return false;
+    else {
+
+        if( empty( $field_types ) ){
+            foreach( $defined_fields as $field ){
+
+                if( $field['meta-name'] == $meta_name )
+                    return true;
+
+            }
+        } else {
+            foreach( $defined_fields as $field ){
+
+                if( in_array( $field['field'], $field_types ) && $field['meta-name'] == $meta_name )
+                    return true;
+
+            }
+        }
+
+    }
+
+    return false;
+
+}

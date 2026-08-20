@@ -1,0 +1,265 @@
+/**
+ * All of the CSS for your public-facing functionality should be
+ * included in this file.
+ */
+
+.friends-plugin-container {
+    /* This container can adapt to theme's width settings like 'narrow' or 'normal' */
+    /* Add margin or padding as needed based on theme integration */
+}
+
+.friends-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+}
+
+/* 使用伪元素填充最后一行，确保奇数个卡片左对齐 */
+.friends-grid::after {
+    content: '';
+    width: 350px; /* 与卡片宽度相同 */
+    height: 0; /* 不占用垂直空间 */
+}
+
+.friend-card {
+    background-color: #fff;
+    border: 1px solid #E7E9EF;
+    border-radius: 14px;
+    padding: 20px;
+    box-sizing: border-box;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    overflow: hidden; /* Ensures content respects border-radius */
+    width: 350px; /* Fixed width for consistent card size */
+    flex-shrink: 0; /* Prevent cards from shrinking */
+}
+
+.friend-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.friend-card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.friend-icon-link {
+    margin-right: 15px;
+    flex-shrink: 0; /* Prevents icon from shrinking */
+}
+
+.friend-icon {
+    width: 60px; /* Adjust as per design, image shows ~80px but let's start smaller */
+    height: 60px;
+    border-radius: 50%; /* Circular icon */
+    object-fit: cover; /* Ensures image covers the area without distortion */
+    display: block;
+}
+
+.friend-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* For text truncation */
+}
+
+.friend-name {
+    margin: 0 0 5px 0 !important;
+    font-size: 1.2em; /* Adjust as needed */
+    font-weight: bold;
+    /* color: inherit; */ /* Will inherit from theme's default color */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.friend-name a {
+    text-decoration: none;
+    color: inherit;
+}
+
+.friend-description {
+    margin: 0;
+    font-size: 0.9em;
+    color: #BFC1C6; /* As per requirement */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4; /* Ensure single line */
+    max-height: 1.4em; /* Fallback for single line */
+}
+
+.friend-latest-post {
+    background-color: #f8f9fa; /* Light grey background */
+    border-radius: 14px; /* As per requirement */
+    padding: 10px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85em;
+    min-height: 2.5em; /* Consistent height, adjust as needed */
+    box-sizing: border-box;
+    overflow: hidden; /* For text truncation */
+}
+
+.latest-post-title {
+    color: inherit; /* Will inherit from theme's default color */
+    text-decoration: none;
+    font-weight: normal;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 10px; /* Space between title and date */
+    flex-grow: 1; /* Allow title to take available space */
+}
+
+.latest-post-title:hover {
+    text-decoration: underline;
+}
+
+.latest-post-date,
+.no-latest-post {
+    color: #BFC1C6; /* As per requirement */
+    white-space: nowrap;
+    flex-shrink: 0; /* Prevent date from shrinking */
+}
+
+.no-latest-post {
+    width: 100%;
+    text-align: left;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .friend-card {
+        max-width: 90vw; /* Prevent overflow on very small screens */
+        width: min(350px, 90vw); /* Maintain fixed width but respect viewport limits */
+    }
+}
+
+/* Ensure consistent height for the latest post area */
+.friend-latest-post {
+    height: 40px; /* Example fixed height, adjust based on content and font size */
+    display: flex;
+    align-items: center;
+}
+
+.friend-description {
+    height: 1.4em; /* Strict height for one line */
+    overflow: hidden;
+}
+
+/* Recent post animation styles */
+.friend-card.recent-post {
+    position: relative;
+    animation: rotating-shadow 3s ease-in-out infinite;
+}
+
+@keyframes rotating-shadow {
+    0% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            8px 8px 20px rgba(152, 193, 217, 0.4);
+    }
+    5% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            8px 6px 20px rgba(152, 193, 217, 0.4);
+    }
+    10% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            6px 8px 20px rgba(152, 193, 217, 0.4);
+    }
+    15% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            3px 9px 20px rgba(152, 193, 217, 0.4);
+    }
+    20% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            0px 10px 20px rgba(152, 193, 217, 0.4);
+    }
+    25% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -3px 9px 20px rgba(152, 193, 217, 0.4);
+    }
+    30% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -6px 8px 20px rgba(152, 193, 217, 0.4);
+    }
+    35% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -9px 6px 20px rgba(152, 193, 217, 0.4);
+    }
+    40% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -10px 3px 20px rgba(152, 193, 217, 0.4);
+    }
+    45% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -9px 0px 20px rgba(152, 193, 217, 0.4);
+    }
+    50% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -8px -3px 20px rgba(152, 193, 217, 0.4);
+    }
+    55% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -6px -6px 20px rgba(152, 193, 217, 0.4);
+    }
+    60% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            -3px -9px 20px rgba(152, 193, 217, 0.4);
+    }
+    65% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            0px -10px 20px rgba(152, 193, 217, 0.4);
+    }
+    70% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            3px -9px 20px rgba(152, 193, 217, 0.4);
+    }
+    75% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            6px -6px 20px rgba(152, 193, 217, 0.4);
+    }
+    80% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            8px -3px 20px rgba(152, 193, 217, 0.4);
+    }
+    85% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            9px 0px 20px rgba(152, 193, 217, 0.4);
+    }
+    90% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            10px 3px 20px rgba(152, 193, 217, 0.4);
+    }
+    95% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            9px 6px 20px rgba(152, 193, 217, 0.4);
+    }
+    100% {
+        box-shadow: 
+            0 0 12px rgba(152, 193, 217, 0.2),
+            8px 8px 20px rgba(152, 193, 217, 0.4);
+    }
+}
